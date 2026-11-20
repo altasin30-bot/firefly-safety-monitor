@@ -261,4 +261,4 @@ University: University of Information Technology And Sciences
 
 ## License
 
-MIT License
+For academic use only
