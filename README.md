@@ -257,7 +257,6 @@ Student ID: 0432320005101182
 
 Course: Internet of Things
 University: University of Information Technology And Sciences 
----
 
 ## License
 
