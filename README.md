@@ -214,7 +214,7 @@ const String FIREBASE_URL = "https://YOUR-PROJECT-default-rtdb.region.firebaseda
 
 | Dashboard | Hardware setup |
 |---|---|
-| ![Dashboard](images/dashboard.png) | ![Hardware](images/hardware.png) |
+| ![Dashboard](images/dashboard.png) | ![Hardware](images/hardware.jpg) |
 
 ---
 
