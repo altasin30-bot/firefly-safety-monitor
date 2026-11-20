@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firefly Safety Dashboard</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #111; color: #eee; }
+  header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  h1 { font-size: 1.2rem; margin: 0; letter-spacing: 1px; }
+  #updated { font-size: 0.85rem; color: #aaa; }
+
+  #banner { border-radius: 12px; padding: 28px 12px; text-align: center; font-size: 3rem; font-weight: 800; letter-spacing: 3px; margin-bottom: 16px; transition: background 0.3s, color 0.3s; }
+  .SAFE    { background: #1e9e4a; color: #fff; }
+  .CAUTION { background: #f2c200; color: #111; }
+  .RISKY   { background: #d62828; color: #fff; }
+  .OFFLINE { background: #555;    color: #fff; }
+
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .card { background: #1d1d1d; border-radius: 10px; padding: 14px; border-left: 6px solid #444; }
+  .card h2 { font-size: 0.85rem; margin: 0 0 6px; color: #aaa; font-weight: 600; }
+  .value { font-size: 1.6rem; font-weight: 700; }
+  .unit  { font-size: 0.8rem; color: #999; margin-left: 4px; }
+  .level { margin-top: 8px; font-weight: 700; font-size: 0.9rem; }
+
+  .lvl-LOW    { border-left-color: #1e9e4a; }
+  .lvl-MEDIUM { border-left-color: #f2c200; }
+  .lvl-HIGH   { border-left-color: #d62828; }
+  .lvl-LOW    .level { color: #3ddc84; }
+  .lvl-MEDIUM .level { color: #f2c200; }
+  .lvl-HIGH   .level { color: #ff5a5a; }
+
+  footer { margin-top: 20px; padding: 12px; font-size: 0.8rem; line-height: 1.4; color: #bbb; border-top: 1px solid #333; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>FIREFLY</h1>
+  <span id="updated">Waiting for data...</span>
+</header>
+
+<div id="banner" class="OFFLINE">CONNECTING</div>
+
+<div class="grid">
+  <div class="card" id="card-mq2">
+    <h2>MQ-2 Combustible gas / smoke</h2>
+    <div class="value"><span id="mq2-val">--</span><span class="unit">mV</span></div>
+    <div class="level" id="mq2-lvl">--</div>
+  </div>
+
+  <div class="card" id="card-mq135">
+    <h2>MQ-135 Air quality</h2>
+    <div class="value"><span id="mq135-val">--</span><span class="unit">mV</span></div>
+    <div class="level" id="mq135-lvl">--</div>
+  </div>
+
+  <div class="card" id="card-mq7">
+    <h2>MQ-7 Carbon monoxide</h2>
+    <div class="value"><span id="mq7-val">--</span><span class="unit">mV</span></div>
+    <div class="level" id="mq7-lvl">--</div>
+  </div>
+
+  <div class="card" id="card-temp">
+    <h2>Temperature</h2>
+    <div class="value"><span id="temp-val">--</span><span class="unit">&deg;C</span></div>
+    <div class="level" id="temp-lvl">--</div>
+  </div>
+</div>
+
+<footer>
+  <strong>Disclaimer:</strong> Firefly is a supporting aid only. It does not
+  replace certified gas detectors, thermal imaging, or the incident
+  commander's decisions. Always follow your department's entry procedures.
+</footer>
+
+<script>
+  // ===== EITA CHANGE KORO (sketch er moto-i URL, last e "/" debe na) =====
+  const FIREBASE_URL = 'https://firefly-b3dcc-default-rtdb.asia-southeast1.firebasedatabase.app';
+  // =======================================================================
+
+  const POLL_MS = 2000;
+  const STALE_MS = 10000;   // 10 sec data na bodlale OFFLINE dekhabe
+
+  let lastTs = null;
+  let lastChange = Date.now();
+
+  function setCard(cardId, valId, lvlId, value, level) {
+    document.getElementById(cardId).className = 'card lvl-' + level;
+    document.getElementById(valId).textContent = value;
+    document.getElementById(lvlId).textContent = level;
+  }
+
+  function setBanner(status, text) {
+    const banner = document.getElementById('banner');
+    banner.className = status;
+    banner.textContent = text || status;
+  }
+
+  function render(d) {
+    setBanner(d.status);
+    setCard('card-mq2',   'mq2-val',   'mq2-lvl',   d.mq2.mv,   d.mq2.level);
+    setCard('card-mq135', 'mq135-val', 'mq135-lvl', d.mq135.mv, d.mq135.level);
+    setCard('card-mq7',   'mq7-val',   'mq7-lvl',   d.mq7.mv,   d.mq7.level);
+    setCard('card-temp',  'temp-val',  'temp-lvl',  Number(d.temp.c).toFixed(1), d.temp.level);
+    document.getElementById('updated').textContent =
+      'Last updated: ' + new Date().toLocaleTimeString();
+  }
+
+  function showOffline(msg) {
+    setBanner('OFFLINE', msg);
+    document.getElementById('updated').textContent =
+      'Offline since ' + new Date().toLocaleTimeString();
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch(FIREBASE_URL + '/firefly/latest.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const d = await res.json();
+
+      if (!d) { showOffline('NO DATA YET'); return; }
+
+      // ESP32 er ts (millis) bodlay na mane device bondho/WiFi nai
+      if (d.ts !== lastTs) {
+        lastTs = d.ts;
+        lastChange = Date.now();
+      }
+      if (Date.now() - lastChange > STALE_MS) {
+        showOffline('DEVICE OFFLINE');
+        return;
+      }
+      render(d);
+    } catch (err) {
+      showOffline('NO CONNECTION');
+    }
+  }
+
+  refresh();
+  setInterval(refresh, POLL_MS);
+</script>
+
+</body>
+</html>
