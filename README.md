@@ -72,8 +72,7 @@ The website and the ESP32 never talk directly. The ESP32 writes to one Firebase 
 ```
 firefly-safety-monitor/
 ├── README.md
-├── dashboard/
-│   └── index.html
+├── index.html
 ├── firmware/
 │   └── firefly/
 │       └── firefly.ino
@@ -253,12 +252,11 @@ ESP32 · Arduino IDE · Firebase Realtime Database (REST API) · HTML / CSS / Ja
 
 ## Author
 
-**Your Name**
-Student ID: your-id
+**M A Nabihan Tasin**
+Student ID: 0432320005101182
 
-Course: your course
-University: your university
-
+Course: Internet of Things
+University: University of Information Technology And Sciences 
 ---
 
 ## License
