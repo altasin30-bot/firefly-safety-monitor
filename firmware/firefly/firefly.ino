@@ -1,17 +1,24 @@
+/*
+  Firefly: Gas & Fire Safety Monitor (ESP32)
+
+  Reads MQ-2, MQ-7, MQ-135 and TMP36 sensors, raises a local alarm
+  (LEDs + buzzer) and sends live data to Firebase Realtime Database
+  using the REST API (no extra libraries needed).
+
+  Before uploading to the ESP32, edit the three values in the
+  "CHANGE THESE" section below.
+*/
+
 #include <WiFi.h>
-#include <WiFiMulti.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 
-WiFiMulti wifiMulti;
-
-// ===== EITA CHANGE KORO =====
-const char* ssid1 = "Narzo 50";
+// ===== CHANGE THESE =====
+const char* ssid1 = "YOUR_WIFI_NAME";
 const char* pass1 = "YOUR_WIFI_PASSWORD";
-// dont use "/" in last
-const String FIREBASE_URL = "https://PROJECT-default-rtdb.asia-southeast1.firebasedatabase.app";
-
-// =============================
+// Do not put a "/" at the end
+const String FIREBASE_URL = "https://YOUR-PROJECT-default-rtdb.region.firebasedatabase.app";
+// ========================
 
 // --- Pins ---
 const int pinTMP36  = 36;
@@ -23,34 +30,39 @@ const int pinAmberLED = 26;
 const int pinRedLED   = 27;
 const int pinBuzzer   = 14;
 
-// --- Thresholds (millivolt) ---
-const float TEMP_WARNING  = 40.0;
-const float TEMP_CRITICAL = 55.0;
+// --- Thresholds ---
+const float TEMP_WARNING  = 40.0;  // °C
+const float TEMP_CRITICAL = 55.0;  // °C
 const int   GAS_WARNING   = 1000;  // mV
 const int   GAS_CRITICAL  = 2000;  // mV
 
+// Classify a gas sensor reading as LOW, MEDIUM or HIGH
 String levelGas(int mv) {
   if (mv > GAS_CRITICAL) return "HIGH";
   if (mv > GAS_WARNING)  return "MEDIUM";
   return "LOW";
 }
 
+// Classify a temperature reading as LOW, MEDIUM or HIGH
 String levelTemp(float c) {
   if (c >= TEMP_CRITICAL) return "HIGH";
   if (c >= TEMP_WARNING)  return "MEDIUM";
   return "LOW";
 }
 
+// Connect to Wi-Fi (gives up after about 30 seconds and continues offline)
 void setup_wifi() {
   Serial.println("\nConnecting to WiFi...");
-  wifiMulti.addAP(ssid1, pass1);
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.begin(ssid1, pass1);
 
   int attempts = 0;
-  while (wifiMulti.run() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
     if (++attempts > 60) {
-      Serial.println("\nWiFi failed. Offline alarm mode.");
+      Serial.println("\nWiFi failed. Running in offline alarm mode.");
       return;
     }
   }
@@ -58,9 +70,10 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
+// Send the JSON data to Firebase Realtime Database (REST API)
 bool sendToFirebase(const String& json) {
   WiFiClientSecure secureClient;
-  secureClient.setInsecure();          // certificate check bondho (simple setup)
+  secureClient.setInsecure();          // skip certificate check (simple setup)
 
   HTTPClient http;
   http.setTimeout(5000);
@@ -68,7 +81,7 @@ bool sendToFirebase(const String& json) {
 
   if (!http.begin(secureClient, url)) return false;
   http.addHeader("Content-Type", "application/json");
-  int code = http.PUT(json);           // PUT = purano data replace kore
+  int code = http.PUT(json);           // PUT replaces the old data at this path
   http.end();
 
   Serial.printf("Firebase HTTP: %d\n", code);
@@ -78,38 +91,43 @@ bool sendToFirebase(const String& json) {
 void setup() {
   Serial.begin(115200);
 
+  // Set LED and buzzer pins as outputs
   pinMode(pinGreenLED, OUTPUT);
   pinMode(pinAmberLED, OUTPUT);
   pinMode(pinRedLED, OUTPUT);
   pinMode(pinBuzzer, OUTPUT);
 
+  // Turn everything off at start
   digitalWrite(pinGreenLED, LOW);
   digitalWrite(pinAmberLED, LOW);
   digitalWrite(pinRedLED, LOW);
   digitalWrite(pinBuzzer, LOW);
 
-  analogReadResolution(12);
+  analogReadResolution(12);            // 12-bit ADC (0 - 4095)
   setup_wifi();
 }
 
 void loop() {
-  // 1. Sensor read (millivolt e)
-  int mvTMP  = analogReadMilliVolts(pinTMP36);
-  int mvMQ2  = analogReadMilliVolts(pinMQ2);
-  int mvMQ7  = analogReadMilliVolts(pinMQ7);
+  // 1. Read sensors (in millivolts)
+  int mvTMP   = analogReadMilliVolts(pinTMP36);
+  int mvMQ2   = analogReadMilliVolts(pinMQ2);
+  int mvMQ7   = analogReadMilliVolts(pinMQ7);
   int mvMQ135 = analogReadMilliVolts(pinMQ135);
 
-  float tempC = (mvTMP - 500) / 10.0;   // TMP36: 500mV = 0°C, 10mV per °C
+  // TMP36: 500 mV = 0 °C, 10 mV per °C
+  float tempC = (mvTMP - 500) / 10.0;
 
+  // Classify each reading
   String lvlTemp  = levelTemp(tempC);
   String lvlMQ2   = levelGas(mvMQ2);
   String lvlMQ7   = levelGas(mvMQ7);
   String lvlMQ135 = levelGas(mvMQ135);
 
+  // Print readings to the Serial Monitor
   Serial.printf("Temp: %.1f C | MQ2: %d mV | MQ7: %d mV | MQ135: %d mV\n",
                 tempC, mvMQ2, mvMQ7, mvMQ135);
 
-  // 2. Overall status
+  // 2. Decide the overall status
   String status = "SAFE";
   if (lvlTemp == "HIGH" || lvlMQ2 == "HIGH" || lvlMQ7 == "HIGH") {
     status = "RISKY";
@@ -117,23 +135,25 @@ void loop() {
     status = "CAUTION";
   }
 
-  // 3. Local alarm (WiFi na thakleo kaj kore)
+  // 3. Local alarm (works even without Wi-Fi)
   digitalWrite(pinGreenLED, status == "SAFE");
   digitalWrite(pinAmberLED, status == "CAUTION");
   digitalWrite(pinRedLED,   status == "RISKY");
   digitalWrite(pinBuzzer,   status == "RISKY");
 
-  // 4. Firebase e pathano
-  if (wifiMulti.run() == WL_CONNECTED) {
+  // 4. Send data to Firebase (only if Wi-Fi is connected)
+  if (WiFi.status() == WL_CONNECTED) {
     String json = "{";
     json += "\"status\":\"" + status + "\",";
-    json += "\"ts\":" + String(millis()) + ",";
+    json += "\"ts\":" + String(millis()) + ",";   // changes every update, used by the dashboard to detect offline
     json += "\"mq2\":{\"mv\":"   + String(mvMQ2)   + ",\"level\":\"" + lvlMQ2   + "\"},";
     json += "\"mq7\":{\"mv\":"   + String(mvMQ7)   + ",\"level\":\"" + lvlMQ7   + "\"},";
     json += "\"mq135\":{\"mv\":" + String(mvMQ135) + ",\"level\":\"" + lvlMQ135 + "\"},";
     json += "\"temp\":{\"c\":"   + String(tempC, 1) + ",\"level\":\"" + lvlTemp  + "\"}";
     json += "}";
     sendToFirebase(json);
+  } else {
+    WiFi.reconnect();   // Wi-Fi dropped: try to connect again
   }
 
   delay(1500);
