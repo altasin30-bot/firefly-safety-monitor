@@ -4,7 +4,7 @@ An IoT-based **gas, smoke and temperature safety monitor** built with an **ESP32
 
 The ESP32 reads gas sensors and a temperature sensor, raises a **local alarm** (LEDs + buzzer) immediately, and syncs live readings to a website that can be opened from any phone or PC.
 
-**Live demo:** https://YOUR-USERNAME.github.io/REPO-NAME/dashboard/
+**Live demo:** [https://YOUR-USERNAME.github.io/REPO-NAME/dashboard/](https://altasin30-bot.github.io/firefly-safety-monitor/)
 
 ![Dashboard](images/dashboard.png)
 
